@@ -1,0 +1,8 @@
+R_lower_threshold: [0, 50, 50]
+R_upper_threshold: [10, 255, 255]
+
+G_lower_threshold: [35, 50, 50]
+G_upper_threshold: [85, 255, 255]
+
+B_lower_threshold: [100, 50, 50]
+B_upper_threshold: [140, 255, 255]
