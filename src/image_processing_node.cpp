@@ -1,5 +1,6 @@
 #include <opencv2/opencv.hpp>
 #include <ros/ros.h>
+#include <chrono>
 #include <std_msgs/Bool.h>
 #include <vector>
 #include "HSVFilter.hpp"
@@ -61,8 +62,14 @@ int main(int argc, char** argv) {
     bool last_msg_r = false;
     bool last_msg_g = false;
     bool last_msg_b = false;
+
+    int frame_count = 0;
+    double elapsed_seconds = 0.0;
+
     
     while(ros::ok()) {
+
+        auto start = std::chrono::high_resolution_clock::now();
 
         bool detected_r = false;
         bool detected_g = false;
@@ -116,6 +123,21 @@ int main(int argc, char** argv) {
             break;
         }
         ros::spinOnce();
+
+        auto end = std::chrono::high_resolution_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0;  // Convert to seconds
+        elapsed_seconds += elapsed;
+        frame_count++;
+
+        if (elapsed_seconds >= 1.0) {  // Display FPS every second
+            double fps = (frame_count * cams.size()) / elapsed_seconds;
+            ROS_INFO("Average FPS: %f", fps);
+
+            // Reset the counters
+            frame_count = 0;
+            elapsed_seconds = 0.0;
+        }
+
     }
 
     for (auto& cam : cams) {
