@@ -17,27 +17,16 @@ int main(int argc, char** argv) {
 
     HSVFilter r_filter("R"), g_filter("G"), b_filter("B");
 
-    // Get the list of camera indices
-    int single_camera_index;
     std::vector<int> camera_indices;
 
-    // Try fetching the parameter as a single integer
-    if(pnh.getParam("camera_indices", single_camera_index)) {
-        ROS_INFO("Loaded single camera index: %d", single_camera_index);
-        camera_indices.push_back(single_camera_index);
-    }
-    // If not found as single integer, try fetching as a list of integers
-    else if(pnh.getParam("camera_indices", camera_indices)) {
+    if(pnh.getParam("/image_processing/camera_indices", camera_indices)) {
         for (int i : camera_indices) {
             ROS_INFO("Loaded camera index: %d", i);
         }
-    }
-    // If neither worked, default to camera 0
-    else {
+    }else {
         camera_indices.push_back(0);  
         ROS_WARN("Using default camera index: 0");
     }
-
 
     ros::Publisher pub_robot_r = nh.advertise<std_msgs::Bool>("detection_robot_r", 10);
     ros::Publisher pub_robot_g = nh.advertise<std_msgs::Bool>("detection_robot_g", 10);
@@ -67,31 +56,33 @@ int main(int argc, char** argv) {
         cams.push_back(cam);
     }
 
+    std_msgs::Bool msg_r, msg_g, msg_b;
+
+    bool last_msg_r = false;
+    bool last_msg_g = false;
+    bool last_msg_b = false;
+    
     while(ros::ok()) {
+
+        bool detected_r = false;
+        bool detected_g = false;
+        bool detected_b = false;
+
         for(size_t i = 0; i < cams.size(); ++i) {
             // ROS_INFO("Cam: %d", camera_indices[i]);
-            cv::Mat frame, resized_frame;
+            cv::Mat frame;
             if(cams[i].read(frame)) {
-                // ROS_INFO("Reading from camera index: %d", camera_indices[i]);
-                cv::resize(frame, resized_frame, cv::Size(640, 480));
-
-                cv::Mat mask_r, mask_g, mask_b;
-                bool detection_r = r_filter.apply(frame, verbose_filter ? &mask_r : nullptr);
-                bool detection_g = g_filter.apply(frame, verbose_filter ? &mask_g : nullptr);
-                bool detection_b = b_filter.apply(frame, verbose_filter ? &mask_b : nullptr);
-
-                std_msgs::Bool msg_r, msg_g, msg_b;
-                msg_r.data = detection_r;
-                msg_g.data = detection_g;
-                msg_b.data = detection_b;
-
-                pub_robot_r.publish(msg_r);
-                pub_robot_g.publish(msg_g);
-                pub_robot_b.publish(msg_b);
-
                 if(verbose_original) {
+                    cv::Mat resized_frame;
+                    cv::resize(frame, resized_frame, cv::Size(640, 480));
                     cv::imshow("Camera " + std::to_string(camera_indices[i]) + " Original", resized_frame);
                 }
+
+                cv::Mat mask_r, mask_g, mask_b;
+                detected_r = detected_r || r_filter.apply(frame, verbose_filter ? &mask_r : nullptr);
+                detected_g = detected_g || g_filter.apply(frame, verbose_filter ? &mask_g : nullptr);
+                detected_b = detected_b || b_filter.apply(frame, verbose_filter ? &mask_b : nullptr);
+                
                 if(verbose_filter) {
                     cv::imshow("Camera " + std::to_string(camera_indices[i]) + " R", mask_r);
                     cv::imshow("Camera " + std::to_string(camera_indices[i]) + " G", mask_g);
@@ -99,9 +90,28 @@ int main(int argc, char** argv) {
                 }
             }
             else {
-                ROS_WARN("Failed to read from camera index: %d", camera_indices[i]);
+                ROS_WARN_THROTTLE(5.0, "Failed to read from camera index: %d", camera_indices[i]);
             }
         }
+
+        if (detected_r != last_msg_r) {
+            last_msg_r = detected_r;
+            msg_r.data = detected_r;
+            pub_robot_r.publish(msg_r);
+        }
+
+        if (detected_g != last_msg_g) {
+            last_msg_g = detected_g;
+            msg_g.data = detected_g;
+            pub_robot_g.publish(msg_g);
+        }
+
+        if (detected_b != last_msg_b) {
+            last_msg_b = detected_b;
+            msg_b.data = detected_b;
+            pub_robot_b.publish(msg_b);
+        }
+
         if(cv::waitKey(1) == 'q') {
             break;
         }

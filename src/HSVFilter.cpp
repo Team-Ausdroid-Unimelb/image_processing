@@ -36,9 +36,9 @@ bool HSVFilter::apply(const cv::Mat& image, cv::Mat* mask) {
     }
     
     bool detection = avg_mask_val > 15;
-    if (detection) {
-        ROS_INFO("Detection successful for color: %s", color_.c_str());
-    }
+    // if (detection) {
+    //     ROS_INFO("Detection successful for color: %s", color_.c_str());
+    // }
 
     return detection;
 }
