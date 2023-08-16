@@ -1,12 +1,10 @@
 <launch>
     <!-- Load parameters from yaml file -->
     <rosparam command="load" file="$(find image_processing)/config/HSV_filter_param.yaml" />
+    <rosparam command="load" file="$(find image_processing)/config/camera_config.yaml" />
 
     <!-- Node to launch your camera publisher script -->
     <node name="image_processing_node" pkg="image_processing" type="image_processing_node" output="screen">
-        <!-- Camera indices -->
-        <!-- <param name="camera_indices" value="2"/> -->
-        <rosparam param="camera_indices">[0, 2, 4, 6]</rosparam>
         <!-- Parameter for verbose mode -->
         <param name="verbose_filter" value="false"/>
         <param name="verbose_original" value="false"/>
