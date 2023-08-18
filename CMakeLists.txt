@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(image_processing)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+
 
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
@@ -11,7 +13,10 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   std_msgs
 )
-find_package(OpenCV 4.2.0 REQUIRED)
+find_package(OpenCV REQUIRED)
+find_package(CUDA REQUIRED)
+
+
 
 
 ## System dependencies are found with CMake's conventions
@@ -120,6 +125,7 @@ include_directories(
   include
   ${catkin_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
+  ${CUDA_INCLUDE_DIRS}
 )
 
 ## Declare a C++ library
@@ -150,10 +156,14 @@ add_executable(${PROJECT_NAME}_node src/image_processing_node.cpp)
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(${PROJECT_NAME}_node
-  ${catkin_LIBRARIES}
-  ${OpenCV_LIBRARIES}
+  ${OpenCV_LIBS}
   HSVFilter
+  ${catkin_LIBRARIES}
+  ${CUDA_LIBRARIES}
 )
+
+message("OpenCV_LIBS = ${OpenCV_LIBS}")
+
 
 #############
 ## Install ##

@@ -15,6 +15,7 @@ private:
     cv::Scalar lower_threshold_;
     cv::Scalar upper_threshold_;
     std::string color_;
+    bool gpu_available_;
 
     std::vector<cv::Scalar> getThresholdsFromROSParam(const std::string& color);
 };
