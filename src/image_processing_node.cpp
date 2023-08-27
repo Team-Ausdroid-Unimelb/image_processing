@@ -5,6 +5,13 @@
 #include <vector>
 #include "HSVFilter.hpp"
 
+struct Camera {
+    int index;
+    std::string type;
+    cv::Rect crop_region;  // Add this to store the cropping region
+};
+
+
 int main(int argc, char** argv) {
     ros::init(argc, argv, "image_processing_node");
     ros::NodeHandle nh;
@@ -18,30 +25,50 @@ int main(int argc, char** argv) {
 
     HSVFilter r_filter("R"), g_filter("G"), b_filter("B");
 
-    std::vector<int> camera_indices;
+    std::vector<Camera> cameras;
+    XmlRpc::XmlRpcValue camera_list;
 
-    if(pnh.getParam("/image_processing/camera_indices", camera_indices)) {
-        for (int i : camera_indices) {
-            ROS_INFO("Loaded camera index: %d", i);
+    if (pnh.getParam("/image_processing/cameras", camera_list)) {
+        for (int32_t i = 0; i < camera_list.size(); ++i) {
+            Camera cam;
+            cam.index = static_cast<int>(camera_list[i]["index"]);
+            cam.type = static_cast<std::string>(camera_list[i]["type"]);
+            
+            // Reading the cropping info
+            cam.crop_region.x = static_cast<int>(camera_list[i]["crop_region"]["x"]);
+            cam.crop_region.y = static_cast<int>(camera_list[i]["crop_region"]["y"]);
+            cam.crop_region.width = static_cast<int>(camera_list[i]["crop_region"]["width"]);
+            cam.crop_region.height = static_cast<int>(camera_list[i]["crop_region"]["height"]);
+
+            cameras.push_back(cam);
+            ROS_INFO("Loaded camera index: %d, type: %s", cam.index, cam.type.c_str());
         }
-    }else {
-        camera_indices.push_back(0);  
-        ROS_WARN("Using default camera index: 0");
+    } else {
+        Camera default_cam;
+        default_cam.index = 0;
+        default_cam.type = "normal";
+        cameras.push_back(default_cam);
+        ROS_WARN("Using default camera index: 0 and type: normal");
     }
 
     ros::Publisher pub_robot_r = nh.advertise<std_msgs::Bool>("detection_robot_r", 10);
     ros::Publisher pub_robot_g = nh.advertise<std_msgs::Bool>("detection_robot_g", 10);
     ros::Publisher pub_robot_b = nh.advertise<std_msgs::Bool>("detection_robot_b", 10);
 
-    ROS_INFO_STREAM("Camera indices from param: " << camera_indices.size());
+    ROS_INFO_STREAM("Camera count from param: " << cameras.size());
     std::vector<cv::VideoCapture> cams;
-    for(int index : camera_indices) {
+    for(const Camera& cam_info : cameras) {
         cv::VideoCapture cam;
-        if (!cam.open(index)) {
-            ROS_ERROR("Failed to open camera %d", index);
+        if (!cam.open(cam_info.index)) {
+            ROS_ERROR("Failed to open camera %d", cam_info.index);
             continue;
         }else {
-            ROS_INFO("Successfully opened camera %d", index);
+            ROS_INFO("Successfully opened camera %d", cam_info.index);
+            ROS_INFO("Loaded camera details:");
+            ROS_INFO("Type: %s", cam_info.type.c_str());
+            ROS_INFO("Crop Region: x: %d, y: %d, width: %d, height: %d",
+                    cam_info.crop_region.x, cam_info.crop_region.y,
+                    cam_info.crop_region.width, cam_info.crop_region.height);
         }
 
         /*For debug purpose, if the camera doesn't work. Comment to reduce window numbers.*/
@@ -76,28 +103,43 @@ int main(int argc, char** argv) {
         bool detected_b = false;
 
         for(size_t i = 0; i < cams.size(); ++i) {
-            // ROS_INFO("Cam: %d", camera_indices[i]);
             cv::Mat frame;
-            if(cams[i].read(frame)) {
+            const Camera& cam_info = cameras[i];
+
+            if(cams[i].read(frame)){ 
+                if(frame.empty()) {
+                    ROS_WARN_THROTTLE(5.0, "Received an empty frame from camera index: %d", cam_info.index);
+                    continue;
+                }
+                cv::Rect roi(cam_info.crop_region.x, cam_info.crop_region.y, cam_info.crop_region.width, cam_info.crop_region.height);
+                if(roi.x + roi.width > frame.cols || roi.y + roi.height > frame.rows) {
+                    ROS_WARN_THROTTLE(5.0, "Cropping region exceeds frame dimensions for camera index: %d", cam_info.index);
+                    continue;
+                }
+                cv::Mat cropped = frame(roi);
+
+                // cv::imshow("Cropped Frame from Camera " + std::to_string(cam_info.index), cropped);
+
                 if(verbose_original) {
                     cv::Mat resized_frame;
                     cv::resize(frame, resized_frame, cv::Size(640, 480));
-                    cv::imshow("Camera " + std::to_string(camera_indices[i]) + " Original", resized_frame);
+                    cv::imshow("Camera " + std::to_string(cam_info.index) + " Original", resized_frame);
+
                 }
 
                 cv::Mat mask_r, mask_g, mask_b;
-                detected_r = detected_r || r_filter.apply(frame, verbose_filter ? &mask_r : nullptr);
-                detected_g = detected_g || g_filter.apply(frame, verbose_filter ? &mask_g : nullptr);
-                detected_b = detected_b || b_filter.apply(frame, verbose_filter ? &mask_b : nullptr);
+                detected_r = detected_r || r_filter.apply(cropped, verbose_filter ? &mask_r : nullptr);
+                detected_g = detected_g || g_filter.apply(cropped, verbose_filter ? &mask_g : nullptr);
+                detected_b = detected_b || b_filter.apply(cropped, verbose_filter ? &mask_b : nullptr);
                 
                 if(verbose_filter) {
-                    cv::imshow("Camera " + std::to_string(camera_indices[i]) + " R", mask_r);
-                    cv::imshow("Camera " + std::to_string(camera_indices[i]) + " G", mask_g);
-                    cv::imshow("Camera " + std::to_string(camera_indices[i]) + " B", mask_b);
+                    cv::imshow("Camera " + std::to_string(cam_info.index) + " R", mask_r);
+                    cv::imshow("Camera " + std::to_string(cam_info.index) + " G", mask_g);
+                    cv::imshow("Camera " + std::to_string(cam_info.index) + " B", mask_b);
                 }
             }
             else {
-                ROS_WARN_THROTTLE(5.0, "Failed to read from camera index: %d", camera_indices[i]);
+                ROS_WARN_THROTTLE(5.0, "Failed to read from camera index: %d", cam_info.index);
             }
         }
 

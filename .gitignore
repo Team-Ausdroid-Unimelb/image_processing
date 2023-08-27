@@ -1,1 +1,2 @@
-config/
+config/camera_config.yaml
+config/HSV_filter_param.yaml
